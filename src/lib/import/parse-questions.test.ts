@@ -132,6 +132,13 @@ describe('advertencias: la fila entra, pero el administrador debe mirarla', () =
     assert.match(warningsOf([row({ enunciado: '¿Cuál?' })]).join(), /muy corto/)
   })
 
+  it('sin enunciado avisa pero NO bloquea (preguntas de completar un texto)', () => {
+    const result = parse([row({ enunciado: '' })])
+    assert.equal(result.issues.filter((i) => i.severity === 'error').length, 0)
+    assert.equal(result.questions.length, 1, 'la pregunta cloze se carga igual')
+    assert.match(warningsOf([row({ enunciado: '' })]).join(), /no tiene enunciado/)
+  })
+
   it('un peso fuera de rango se ignora y la pregunta vale 1', () => {
     const result = parse([row({ peso: '99' })])
     assert.match(result.issues.map((i) => i.message).join(), /Peso inválido/)

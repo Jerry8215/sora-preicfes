@@ -233,7 +233,12 @@ export function ExamRunner({ view }: { view: ExamView }) {
 
             <h2 className="mb-4 text-lg font-medium text-navy-900">
               <span className="mr-2 text-brand-600">{question.order}.</span>
-              <MathText text={question.stem} />
+              {question.stem ? (
+                <MathText text={question.stem} />
+              ) : (
+                // Preguntas de completar un texto (cloze): el enunciado va vacío.
+                <span className="text-muted-600">Elige la opción correcta.</span>
+              )}
             </h2>
 
             {/* La imagen del enunciado va aquí, salvo cuando ya se mostró dentro

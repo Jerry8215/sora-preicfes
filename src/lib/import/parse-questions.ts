@@ -312,8 +312,11 @@ function parseRow(
   }
 
   // --- Enunciado ---
+  // El enunciado puede ir vacío: en las preguntas de completar un texto (cloze)
+  // el "espacio" ES la pregunta, y la lectura va en el contexto. No se bloquea,
+  // solo se avisa, por si de verdad se le olvidó.
   const stem = clean(raw.enunciado)
-  if (!stem) block('Falta el enunciado.', 'enunciado')
+  if (!stem) at('warning', 'Esta pregunta no tiene enunciado. Solo déjalo así si es de completar un texto (cloze); si no, escríbelo.', 'enunciado')
   else if (stem.length < 10) at('warning', 'El enunciado es muy corto. ¿Quedó cortado por el OCR?', 'enunciado')
 
   // --- Opciones (texto o imagen, de A hasta H) ---
