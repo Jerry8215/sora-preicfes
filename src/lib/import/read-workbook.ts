@@ -148,10 +148,18 @@ export async function readQuestionRows(source: string | Buffer): Promise<RawRow[
   if (typeof source === 'string') await workbook.xlsx.readFile(source)
   else await workbook.xlsx.load(source as never)
 
-  const sheet = workbook.getWorksheet(SHEET_NAME)
+  // Se busca la hoja "Preguntas". Pero al exportar desde Google Sheets la
+  // pestaña puede tener otro nombre: si el archivo trae UNA sola hoja, se usa esa
+  // (es lo que la persona quería subir). Con varias hojas sí se exige el nombre,
+  // para no leer por error la de instrucciones o la de competencias.
+  const sheet =
+    workbook.getWorksheet(SHEET_NAME) ??
+    (workbook.worksheets.length === 1 ? workbook.worksheets[0] : undefined)
   if (!sheet) {
+    const nombres = workbook.worksheets.map((s) => `"${s.name}"`).join(', ')
     throw new WorkbookFormatError(
-      `El archivo no tiene una hoja llamada "${SHEET_NAME}". ¿Está usando la plantilla de SORA?`,
+      `El archivo no tiene una hoja llamada "${SHEET_NAME}". Hojas encontradas: ${nombres}. ` +
+        'Renombra la pestaña de las preguntas como "Preguntas".',
     )
   }
 
