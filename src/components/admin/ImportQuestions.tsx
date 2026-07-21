@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 
 import {
   commitImportAction,
@@ -15,7 +15,9 @@ import type { Issue } from '@/lib/import/parse-questions'
 const previewInitial: PreviewState = { result: null, error: null }
 const commitInitial: CommitState = { ok: false, error: null, summary: null }
 
-export function ImportQuestions() {
+type ExistingSimulacro = { title: string; count: number }
+
+export function ImportQuestions({ existing = [] }: { existing?: ExistingSimulacro[] }) {
   const [preview, previewAction, previewing] = useActionState(previewImportAction, previewInitial)
   const [commit, commitAction, committing] = useActionState(commitImportAction, commitInitial)
 
@@ -46,6 +48,18 @@ export function ImportQuestions() {
   }
 
   const result = preview.result
+
+  // El nombre de simulacro que trae el Excel (el de la primera pregunta que lo
+  // tenga). Es solo la sugerencia inicial: el admin puede cambiarlo abajo.
+  const excelName = result?.questions.find((q) => q.simulacro)?.simulacro ?? ''
+  const [target, setTarget] = useState('')
+  // Cuando llega una vista previa nueva, arranca con el nombre del Excel.
+  useEffect(() => {
+    setTarget(excelName)
+  }, [excelName])
+
+  const trimmed = target.trim()
+  const match = existing.find((e) => e.title.toLowerCase() === trimmed.toLowerCase())
 
   return (
     <div className="flex flex-col gap-6">
@@ -145,12 +159,60 @@ export function ImportQuestions() {
           {result.questions.length > 0 ? (
             <form action={commitAction} className="mt-6">
               <input type="hidden" name="questions" value={JSON.stringify(result.questions)} />
+
+              {/* Destino: crea uno nuevo o agrega a uno existente, según el nombre. */}
+              <div className="mb-5 rounded-lg border border-brand-200 bg-brand-50/60 p-4">
+                <label htmlFor="targetSimulacro" className="block font-semibold text-navy-900">
+                  ¿A qué simulacro van estas preguntas?
+                </label>
+                <p className="mt-1 text-sm text-muted-600">
+                  Escribe un nombre <strong>nuevo</strong> para crear otro simulacro, o el de uno que{' '}
+                  <strong>ya existe</strong> para agregarle estas preguntas.
+                </p>
+                <input
+                  id="targetSimulacro"
+                  name="targetSimulacro"
+                  type="text"
+                  list="simulacros-existentes"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder="Ej: Simulacro 02"
+                  className="mt-3 w-full rounded-lg border border-brand-200 px-3 py-2 text-navy-900"
+                />
+                <datalist id="simulacros-existentes">
+                  {existing.map((e) => (
+                    <option key={e.title} value={e.title} />
+                  ))}
+                </datalist>
+                {trimmed === '' ? (
+                  <p className="mt-2 text-sm text-warning">
+                    ⚠️ Sin nombre, las preguntas van al banco pero no a ningún simulacro.
+                  </p>
+                ) : match ? (
+                  <p className="mt-2 text-sm text-warning">
+                    ➕ «{match.title}» <strong>ya existe</strong> ({match.count} preguntas). Estas se
+                    le <strong>agregarán</strong> (no se borra nada).
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-success">
+                    ✔ Se <strong>creará un simulacro nuevo</strong> llamado «{trimmed}».
+                  </p>
+                )}
+                {existing.length > 0 && (
+                  <p className="mt-2 text-xs text-muted-600">
+                    Ya existen: {existing.map((e) => `${e.title} (${e.count})`).join(' · ')}
+                  </p>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={committing}
                 className="rounded-lg bg-success px-6 py-2.5 font-semibold text-white disabled:opacity-60"
               >
-                {committing ? 'Cargando…' : `Confirmar y cargar ${result.questions.length} preguntas`}
+                {committing
+                  ? 'Cargando…'
+                  : `Confirmar y cargar ${result.questions.length} preguntas${trimmed ? ` en «${trimmed}»` : ''}`}
               </button>
               {commit.error && (
                 <p className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">

@@ -173,14 +173,22 @@ export async function commitImportAction(
     return { ok: false, error: 'Los datos de la carga llegaron dañados. Vuelva a subir el archivo.', summary: null }
   }
 
+  // Destino elegido en la pantalla: si el admin escribió un nombre, TODAS las
+  // preguntas van a ese simulacro (se crea si es nuevo, se agrega si ya existe),
+  // sin importar lo que diga la columna del Excel. Así decide desde la interfaz
+  // si crea otro o amplía uno, y no se sobreescribe por accidente.
+  const targetRaw = formData.get('targetSimulacro')
+  const target = typeof targetRaw === 'string' ? targetRaw.trim() : ''
+
   // Re-validación: se reconstruyen filas crudas desde el candidato y se pasan
   // por el mismo validador. Así una manipulación del JSON no mete basura.
   const rebuilt = candidates.map((q, index) => ({
     rowNumber: q.rowNumber ?? index + 2,
     area: labelForArea(q.area),
     competencia: q.competencia,
-    simulacro: q.simulacro ?? '',
-    taller: q.taller ?? '',
+    // El destino de la pantalla manda sobre la columna del Excel.
+    simulacro: target || q.simulacro || '',
+    taller: target ? '' : (q.taller ?? ''),
     id_contexto: q.contextKey ?? '',
     contexto: q.contextText ?? '',
     enunciado: q.stem,
