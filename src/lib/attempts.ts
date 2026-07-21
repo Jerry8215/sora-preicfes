@@ -210,6 +210,19 @@ export async function getExamView(userId: string, attemptId: string): Promise<Ex
     throw new AttemptError('Este intento ya fue enviado.')
   }
 
+  // Estaba pausado (salió con "Pausar y salir"): al volver a abrir el examen, el
+  // reloj se reanuda desde el tiempo que quedaba. Solo aplica a los cronometrados
+  // (los talleres no tienen reloj y `remainingMs` es nulo).
+  if (attempt.expiresAt === null && attempt.remainingMs != null) {
+    const resumed = new Date(Date.now() + attempt.remainingMs)
+    await db.attempt.update({
+      where: { id: attemptId },
+      data: { expiresAt: resumed, remainingMs: null },
+    })
+    attempt.expiresAt = resumed
+    attempt.remainingMs = null
+  }
+
   const totalParts = attempt.assessment.questions.reduce((max, aq) => Math.max(max, aq.part), 1)
 
   // Si el reloj del servidor dice que el tiempo de la parte en curso ya pasó:
@@ -300,6 +313,28 @@ export async function advanceToNextPart(userId: string, attemptId: string): Prom
       currentPart: attempt.currentPart + 1,
       expiresAt: new Date(Date.now() + minutes * 60_000),
     },
+  })
+}
+
+/**
+ * Pausa el cronómetro al salir: guarda el tiempo que quedaba y detiene el reloj
+ * (`expiresAt = null`). Al volver a abrir el examen, `getExamView` lo reanuda
+ * desde ahí. Salir NUNCA debe fallar, así que ante cualquier caso raro
+ * (intento ajeno, ya enviado, sin cronómetro) simplemente no hace nada.
+ */
+export async function pauseAttempt(userId: string, attemptId: string): Promise<void> {
+  const attempt = await db.attempt.findUnique({
+    where: { id: attemptId },
+    select: { userId: true, status: true, expiresAt: true },
+  })
+  if (!attempt || attempt.userId !== userId) return
+  if (attempt.status !== 'IN_PROGRESS') return
+  if (!attempt.expiresAt) return // taller sin reloj, o ya estaba pausado
+
+  const remaining = Math.max(0, attempt.expiresAt.getTime() - Date.now())
+  await db.attempt.update({
+    where: { id: attemptId },
+    data: { expiresAt: null, remainingMs: remaining },
   })
 }
 

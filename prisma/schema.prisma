@@ -289,6 +289,11 @@ model Attempt {
   /// propio cronómetro. La calificación ocurre al final de la última parte.
   currentPart Int @default(1)
 
+  /// Al salir con "Pausar y salir" se guarda aquí el tiempo que quedaba (en ms)
+  /// y `expiresAt` se pone en nulo: el reloj deja de correr. Al volver a abrir el
+  /// examen, el cronómetro se reanuda desde este valor. Nulo mientras corre.
+  remainingMs Int?
+
   /// Se llenan al calificar. Nulos mientras el intento está en curso.
   globalScore  Int? // 0..500, fórmula oficial ICFES (§2). Solo simulacros.
   percent      Int? // 0..100, porcentaje de aciertos del intento completo (§3).

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 
 import {
   advancePartAction,
+  pauseAttemptAction,
   saveAnswerAction,
   submitAttemptAction,
 } from '@/app/simulacro/[attemptId]/actions'
@@ -335,7 +336,11 @@ export function ExamRunner({ view }: { view: ExamView }) {
         open={exitOpen}
         timed={view.secondsRemaining !== null}
         onCancel={() => setExitOpen(false)}
-        onConfirm={() => router.push('/simulacros')}
+        onConfirm={async () => {
+          // Se pausa el reloj (las respuestas ya están guardadas) y se sale.
+          await pauseAttemptAction(view.attemptId)
+          router.push('/simulacros')
+        }}
       />
     </div>
   )
@@ -417,8 +422,8 @@ function ConfirmExit({
           {timed && (
             <>
               {' '}
-              <strong className="text-warning">
-                El tiempo sigue corriendo aunque salgas.
+              <strong className="text-success">
+                El tiempo se pausa hasta que vuelvas a entrar.
               </strong>
             </>
           )}
@@ -436,7 +441,7 @@ function ConfirmExit({
             onClick={onConfirm}
             className="flex-1 rounded-lg bg-navy-900 px-4 py-2 font-semibold text-white"
           >
-            Salir
+            {timed ? 'Pausar y salir' : 'Salir'}
           </button>
         </div>
       </div>

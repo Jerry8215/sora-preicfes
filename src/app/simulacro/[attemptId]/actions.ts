@@ -3,9 +3,25 @@
 import { revalidatePath } from 'next/cache'
 
 import { requireUser } from '@/lib/auth/require'
-import { advanceToNextPart, AttemptError, saveAnswer, submitAttempt } from '@/lib/attempts'
+import {
+  advanceToNextPart,
+  AttemptError,
+  pauseAttempt,
+  saveAnswer,
+  submitAttempt,
+} from '@/lib/attempts'
 
 type ActionResult = { ok: true } | { ok: false; error: string }
+
+/**
+ * Pausa el cronómetro al salir sin terminar. Las respuestas ya quedaron
+ * guardadas (se guardan solas); esto solo detiene el reloj para poder continuar
+ * después. No falla nunca: salir del examen no debe dar error.
+ */
+export async function pauseAttemptAction(attemptId: string): Promise<void> {
+  const { userId } = await requireUser()
+  await pauseAttempt(userId, attemptId)
+}
 
 export async function saveAnswerAction(
   attemptId: string,
