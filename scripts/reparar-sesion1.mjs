@@ -47,7 +47,28 @@ for (const a of assessments) {
     const respondidas = t.answers.filter((x) => x.selected !== null && ordersPart1.has(x.order)).length
     const completa = respondidas >= part1.length
     if (completa) {
-      console.log(`  ok     ${t.user.email} — Sesión 1 completa (${respondidas}/${part1.length})`)
+      // Terminó la Sesión 1: se queda donde está. Lo único que se le repara es
+      // el reloj de la Sesión 2 si se quedó sin ninguno (los intentos viejos,
+      // de cuando el simulacro todavía no tenía duración configurada, pasaron a
+      // la sesión 2 sin cronómetro).
+      const sinReloj =
+        t.status === 'IN_PROGRESS' &&
+        t.currentPart > 1 &&
+        t.expiresAt === null &&
+        t.remainingMs === null
+      console.log(
+        `  ok     ${t.user.email} — Sesión 1 completa (${respondidas}/${part1.length})` +
+          (sinReloj ? ' — se le pone reloj a la Sesión 2' : ''),
+      )
+      if (sinReloj && apply) {
+        await db.attempt.update({
+          where: { id: t.id },
+          data: {
+            expiresAt: new Date(Date.now() + (a.durationMinutesPart2 ?? minutes) * 60_000),
+            lastSeenAt: new Date(),
+          },
+        })
+      }
       continue
     }
 
@@ -61,11 +82,13 @@ for (const a of assessments) {
       data: {
         status: 'IN_PROGRESS',
         currentPart: 1,
-        // Reloj nuevo para la Sesión 1. `lastSeenAt` en nulo: el tiempo empieza
-        // a contar cuando vuelva a abrir el examen.
+        // Reloj nuevo para la Sesión 1. `lastSeenAt` se pone AHORA, no en nulo:
+        // así el tiempo que pase hasta que vuelva a abrir el examen cuenta como
+        // ausencia y se le devuelve. Entre a la hora que entre, tendrá sus
+        // 270 minutos completos.
         expiresAt: new Date(Date.now() + minutes * 60_000),
         remainingMs: null,
-        lastSeenAt: null,
+        lastSeenAt: new Date(),
         // El intento vuelve a estar en curso: la calificación anterior (parcial,
         // de un simulacro que no había presentado) se descarta.
         submittedAt: null,
