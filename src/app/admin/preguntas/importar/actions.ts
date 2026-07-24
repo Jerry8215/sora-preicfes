@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { parseQuestions, type ParseResult, type ParsedQuestion } from '@/lib/import/parse-questions'
 import { persistQuestions } from '@/lib/import/persist-questions'
 import { readQuestionRows, WorkbookFormatError } from '@/lib/import/read-workbook'
+import { resolveTarget } from '@/lib/import/target'
 import type { Area } from '@/lib/scoring'
 import { MAX_BYTES as UPLOAD_MAX_BYTES, MAX_MB } from '@/lib/upload-limits'
 
@@ -174,11 +175,34 @@ export async function commitImportAction(
   }
 
   // Destino elegido en la pantalla: si el admin escribió un nombre, TODAS las
-  // preguntas van a ese simulacro (se crea si es nuevo, se agrega si ya existe),
-  // sin importar lo que diga la columna del Excel. Así decide desde la interfaz
+  // preguntas van ahí (se crea si es nuevo, se agrega si ya existe), sin
+  // importar lo que digan las columnas del Excel. Así decide desde la interfaz
   // si crea otro o amplía uno, y no se sobreescribe por accidente.
+  //
+  // El TIPO va aparte: antes el destino era siempre un simulacro y, al escribir
+  // aquí el nombre de un taller, se creaba un simulacro llamado "Taller 1"
+  // aunque la columna `taller` del Excel dijera lo correcto. El nombre por sí
+  // solo no dice de qué se trata: hay que preguntarlo.
   const targetRaw = formData.get('targetSimulacro')
   const target = typeof targetRaw === 'string' ? targetRaw.trim() : ''
+  const targetIsTaller = formData.get('targetType') === 'TALLER'
+
+  // Un taller es de UNA sola área (§8): si las preguntas mezclan varias, no es
+  // un taller. Se avisa aquí y no se escribe nada, en vez de dejar un taller
+  // con el área de la primera pregunta y las demás escondidas dentro.
+  if (target && targetIsTaller) {
+    const areas = [...new Set(candidates.map((q) => q.area))]
+    if (areas.length > 1) {
+      return {
+        ok: false,
+        error:
+          `Un taller es de una sola área, y este archivo trae ${areas.length} ` +
+          `(${areas.map(labelForArea).join(', ')}). Cárgalo como simulacro, o separa las ` +
+          'preguntas en un archivo por área.',
+        summary: null,
+      }
+    }
+  }
 
   // Re-validación: se reconstruyen filas crudas desde el candidato y se pasan
   // por el mismo validador. Así una manipulación del JSON no mete basura.
@@ -186,9 +210,9 @@ export async function commitImportAction(
     rowNumber: q.rowNumber ?? index + 2,
     area: labelForArea(q.area),
     competencia: q.competencia,
-    // El destino de la pantalla manda sobre la columna del Excel.
-    simulacro: target || q.simulacro || '',
-    taller: target ? '' : (q.taller ?? ''),
+    // El destino de la pantalla manda sobre las columnas del Excel, pero
+    // respetando el tipo que se eligió. Sin destino escrito, mandan las columnas.
+    ...resolveTarget(q, target, targetIsTaller ? 'TALLER' : 'SIMULACRO'),
     id_contexto: q.contextKey ?? '',
     contexto: q.contextText ?? '',
     enunciado: q.stem,

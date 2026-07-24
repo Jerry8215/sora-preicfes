@@ -7,14 +7,19 @@ import { db } from '@/lib/db'
 export default async function ImportarPreguntasPage() {
   await requireAdmin()
 
-  // Los simulacros que ya existen, para que el admin vea a cuál agregaría las
-  // preguntas (o elija un nombre nuevo y cree otro, en vez de sobreescribir).
+  // Lo que ya existe —simulacros Y talleres—, para que el admin vea a cuál
+  // agregaría las preguntas (o elija un nombre nuevo y cree otro, en vez de
+  // sobreescribir). Si aquí solo se listaran simulacros, un taller destino no
+  // aparecería y se acabaría creando uno nuevo del tipo equivocado.
   const rows = await db.assessment.findMany({
-    where: { type: 'SIMULACRO' },
-    select: { title: true, _count: { select: { questions: true } } },
+    select: { title: true, type: true, _count: { select: { questions: true } } },
     orderBy: { createdAt: 'asc' },
   })
-  const existing = rows.map((r) => ({ title: r.title, count: r._count.questions }))
+  const existing = rows.map((r) => ({
+    title: r.title,
+    type: r.type as 'SIMULACRO' | 'TALLER',
+    count: r._count.questions,
+  }))
 
   return (
     <main className="mx-auto max-w-3xl p-8">

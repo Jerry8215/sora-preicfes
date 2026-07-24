@@ -41,9 +41,6 @@ export function ExamRunner({ view }: { view: ExamView }) {
   const [remaining, setRemaining] = useState<number | null>(view.secondsRemaining)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [exitOpen, setExitOpen] = useState(false)
-  // Se acabó el tiempo de una sesión intermedia: el paso a la siguiente lo
-  // confirma el estudiante, no se hace solo.
-  const [timeUpOpen, setTimeUpOpen] = useState(false)
   const [submitting, startSubmit] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -86,13 +83,12 @@ export function ExamRunner({ view }: { view: ExamView }) {
   const finish = hasNextPart ? advance : submit
 
   // Cronómetro visual. El de verdad está en el servidor: esto solo cuenta hacia
-  // abajo, y al llegar a cero cierra la sesión (o pide confirmación para pasar
-  // a la siguiente), que el servidor confirma.
+  // abajo, y al llegar a cero se envía la última sesión —o, si quedan sesiones,
+  // se muestra el aviso de abajo—, que el servidor confirma.
   useEffect(() => {
     if (remaining === null) return
     if (remaining <= 0) {
-      if (hasNextPart) setTimeUpOpen(true)
-      else submit()
+      if (!hasNextPart) submit()
       return
     }
     const id = setTimeout(() => setRemaining((r) => (r === null ? null : r - 1)), 1000)
@@ -361,7 +357,7 @@ export function ExamRunner({ view }: { view: ExamView }) {
       />
 
       <TimeUpPart
-        open={timeUpOpen}
+        open={remaining !== null && remaining <= 0 && hasNextPart}
         currentPart={view.currentPart}
         submitting={submitting}
         onConfirm={advance}

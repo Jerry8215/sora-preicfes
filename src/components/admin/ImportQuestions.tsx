@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 
 import {
   commitImportAction,
@@ -11,15 +11,40 @@ import {
 } from '@/app/admin/preguntas/importar/actions'
 import { MathText } from '@/components/math/MathText'
 import type { Issue } from '@/lib/import/parse-questions'
+import { suggestTarget, type AssessmentType } from '@/lib/import/target'
 
 const previewInitial: PreviewState = { result: null, error: null }
 const commitInitial: CommitState = { ok: false, error: null, summary: null }
 
-type ExistingSimulacro = { title: string; count: number }
+type ExistingAssessment = { title: string; type: AssessmentType; count: number }
 
-export function ImportQuestions({ existing = [] }: { existing?: ExistingSimulacro[] }) {
+const TYPE_LABEL: Record<AssessmentType, string> = { SIMULACRO: 'Simulacro', TALLER: 'Taller' }
+
+export function ImportQuestions({ existing = [] }: { existing?: ExistingAssessment[] }) {
   const [preview, previewAction, previewing] = useActionState(previewImportAction, previewInitial)
   const [commit, commitAction, committing] = useActionState(commitImportAction, commitInitial)
+
+  const result = preview.result
+
+  // El destino que trae el Excel: el de la primera pregunta que lo tenga, sea
+  // de la columna `simulacro` o de la columna `taller`. Antes solo se miraba
+  // `simulacro`, así que un archivo de taller llegaba aquí con el campo vacío y
+  // el aviso de "no van a ningún simulacro" empujaba a escribir el nombre a
+  // mano —y el taller acababa creado como simulacro—.
+  const { name: excelName, type: excelType } = suggestTarget(result?.questions ?? [])
+
+  const [target, setTarget] = useState(excelName)
+  const [type, setType] = useState<AssessmentType>(excelType)
+
+  // Cuando llega una vista previa NUEVA, el destino vuelve a lo que dice ese
+  // archivo. Se ajusta durante el render y no en un efecto: así no hay un
+  // primer pintado con el destino del archivo anterior.
+  const [seenExcel, setSeenExcel] = useState(excelName)
+  if (excelName !== seenExcel) {
+    setSeenExcel(excelName)
+    setTarget(excelName)
+    setType(excelType)
+  }
 
   // Ya se cargó: mostramos el resumen y no el formulario.
   if (commit.ok && commit.summary) {
@@ -47,19 +72,16 @@ export function ImportQuestions({ existing = [] }: { existing?: ExistingSimulacr
     )
   }
 
-  const result = preview.result
-
-  // El nombre de simulacro que trae el Excel (el de la primera pregunta que lo
-  // tenga). Es solo la sugerencia inicial: el admin puede cambiarlo abajo.
-  const excelName = result?.questions.find((q) => q.simulacro)?.simulacro ?? ''
-  const [target, setTarget] = useState('')
-  // Cuando llega una vista previa nueva, arranca con el nombre del Excel.
-  useEffect(() => {
-    setTarget(excelName)
-  }, [excelName])
-
   const trimmed = target.trim()
-  const match = existing.find((e) => e.title.toLowerCase() === trimmed.toLowerCase())
+  // El nombre solo choca con algo del MISMO tipo: un taller y un simulacro
+  // pueden llamarse igual sin pisarse.
+  const match = existing.find(
+    (e) => e.title.toLowerCase() === trimmed.toLowerCase() && e.type === type,
+  )
+  // Un taller es de una sola área (§8). Si el archivo trae varias, se avisa aquí
+  // y el servidor lo rechaza igualmente.
+  const areas = [...new Set(result?.questions.map((q) => q.area) ?? [])]
+  const tallerConVariasAreas = type === 'TALLER' && areas.length > 1
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,54 +182,92 @@ export function ImportQuestions({ existing = [] }: { existing?: ExistingSimulacr
             <form action={commitAction} className="mt-6">
               <input type="hidden" name="questions" value={JSON.stringify(result.questions)} />
 
-              {/* Destino: crea uno nuevo o agrega a uno existente, según el nombre. */}
+              {/* Destino: crea uno nuevo o agrega a uno existente, según el
+                  nombre. El tipo se elige aparte, porque el nombre por sí solo
+                  no dice si es un simulacro o un taller. */}
               <div className="mb-5 rounded-lg border border-brand-200 bg-brand-50/60 p-4">
-                <label htmlFor="targetSimulacro" className="block font-semibold text-navy-900">
-                  ¿A qué simulacro van estas preguntas?
-                </label>
-                <p className="mt-1 text-sm text-muted-600">
-                  Escribe un nombre <strong>nuevo</strong> para crear otro simulacro, o el de uno que{' '}
+                <span className="block font-semibold text-navy-900">
+                  ¿A dónde van estas preguntas?
+                </span>
+
+                <div className="mt-3 flex gap-2">
+                  {(['SIMULACRO', 'TALLER'] as const).map((t) => (
+                    <label
+                      key={t}
+                      className={`flex-1 cursor-pointer rounded-lg border px-4 py-2 text-center font-medium transition ${
+                        type === t
+                          ? 'border-brand-600 bg-brand-100 text-brand-600'
+                          : 'border-brand-200 bg-white text-navy-900 hover:border-brand-500'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="targetType"
+                        value={t}
+                        checked={type === t}
+                        onChange={() => setType(t)}
+                        className="sr-only"
+                      />
+                      {TYPE_LABEL[t]}
+                    </label>
+                  ))}
+                </div>
+
+                <p className="mt-3 text-sm text-muted-600">
+                  Escribe un nombre <strong>nuevo</strong> para crear otro, o el de uno que{' '}
                   <strong>ya existe</strong> para agregarle estas preguntas.
                 </p>
                 <input
                   id="targetSimulacro"
                   name="targetSimulacro"
                   type="text"
-                  list="simulacros-existentes"
+                  list="assessments-existentes"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
-                  placeholder="Ej: Simulacro 02"
+                  placeholder={type === 'TALLER' ? 'Ej: Taller 3 - Matemáticas' : 'Ej: Simulacro 02'}
                   className="mt-3 w-full rounded-lg border border-brand-200 px-3 py-2 text-navy-900"
                 />
-                <datalist id="simulacros-existentes">
-                  {existing.map((e) => (
-                    <option key={e.title} value={e.title} />
+                <datalist id="assessments-existentes">
+                  {existing.filter((e) => e.type === type).map((e) => (
+                    <option key={`${e.type}-${e.title}`} value={e.title} />
                   ))}
                 </datalist>
+
                 {trimmed === '' ? (
                   <p className="mt-2 text-sm text-warning">
-                    ⚠️ Sin nombre, las preguntas van al banco pero no a ningún simulacro.
+                    ⚠️ Sin nombre, las preguntas van al banco pero no a ningún simulacro ni taller.
                   </p>
                 ) : match ? (
                   <p className="mt-2 text-sm text-warning">
-                    ➕ «{match.title}» <strong>ya existe</strong> ({match.count} preguntas). Estas se
-                    le <strong>agregarán</strong> (no se borra nada).
+                    ➕ El {TYPE_LABEL[type].toLowerCase()} «{match.title}» <strong>ya existe</strong>{' '}
+                    ({match.count} preguntas). Estas se le <strong>agregarán</strong> (no se borra nada).
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-success">
-                    ✔ Se <strong>creará un simulacro nuevo</strong> llamado «{trimmed}».
+                    ✔ Se <strong>creará un {TYPE_LABEL[type].toLowerCase()} nuevo</strong> llamado «
+                    {trimmed}».
+                    {type === 'TALLER' && ' Los talleres salen en la pestaña Talleres y no llevan cronómetro.'}
                   </p>
                 )}
+
+                {tallerConVariasAreas && (
+                  <p className="mt-2 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
+                    Un taller es de <strong>una sola área</strong>, y este archivo trae {areas.length}.
+                    Cárgalo como simulacro, o separa las preguntas en un archivo por área.
+                  </p>
+                )}
+
                 {existing.length > 0 && (
                   <p className="mt-2 text-xs text-muted-600">
-                    Ya existen: {existing.map((e) => `${e.title} (${e.count})`).join(' · ')}
+                    Ya existen:{' '}
+                    {existing.map((e) => `${TYPE_LABEL[e.type]} «${e.title}» (${e.count})`).join(' · ')}
                   </p>
                 )}
               </div>
 
               <button
                 type="submit"
-                disabled={committing}
+                disabled={committing || tallerConVariasAreas}
                 className="rounded-lg bg-success px-6 py-2.5 font-semibold text-white disabled:opacity-60"
               >
                 {committing
